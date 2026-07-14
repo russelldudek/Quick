@@ -1,0 +1,42 @@
+{
+  "campaign": {
+    "company_label": "Quik Hire Staffing",
+    "public_identity": "Quick Hire",
+    "role": "Member of Technical Staff, Enterprise AI",
+    "candidate": "Russell Dudek",
+    "page_size": "US Letter",
+    "repository": "https://github.com/russelldudek/Quick",
+    "job_posting": "https://jobs.micro1.ai/post/e6a1ecd1-6b3c-4e84-b467-ad0b7c2d6654?referralCode=e91c9585-63ad-45aa-9820-d63708190a83&utm_source=referral&utm_medium=share&utm_campaign=job_referral"
+  },
+  "routes": [
+    "index.html",
+    "resume.html",
+    "cover-letter.html",
+    "interview-brief.html",
+    "90-day-plan.html",
+    "backplane-review.html"
+  ],
+  "styles": [
+    "brand-tokens.css",
+    "styles.css",
+    "styles-components.css"
+  ],
+  "scripts": ["app.js"],
+  "records": [
+    "README.md",
+    "brand-intelligence.md",
+    "campaign-audit.md",
+    "artifact-manifest.json"
+  ],
+  "pdfs": [
+    "docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf",
+    "docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf",
+    "docs/Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf",
+    "docs/Russell-Dudek-Enterprise-AI-First-90-Days.pdf",
+    "docs/Russell-Dudek-Enterprise-AI-Backplane-Review.pdf"
+  ],
+  "publication": [
+    ".nojekyll",
+    ".github/workflows/publish-campaign.yml"
+  ]
+}

@@ -1,0 +1,17 @@
+:root {
+  --brand-violet: #7473bd;
+  --brand-deep: #3e236b;
+  --brand-periwinkle: #a6b5db;
+  --brand-ice: #edf1fa;
+  --brand-ink: #171326;
+  --brand-paper: #fbfbfe;
+  --state-stable: #2fb991;
+  --state-watch: #d79a2b;
+  --state-fault: #c84f68;
+  --state-signal: #35b7d4;
+  --text: #211d31;
+  --muted: #655f76;
+  --line: rgba(62, 35, 107, 0.18);
+  --surface: #ffffff;
+  --shadow: 0 22px 60px rgba(40, 29, 73, 0.14);
+}

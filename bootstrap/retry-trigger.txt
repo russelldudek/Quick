@@ -1,0 +1,1 @@
+Retry full campaign materialization after public asset-delivery failure.

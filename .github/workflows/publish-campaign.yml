@@ -1,0 +1,129 @@
+name: Validate and publish candidate campaign
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: candidate-campaign-pages
+  cancel-in-progress: false
+
+jobs:
+  validate-render-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify linked public source
+        shell: bash
+        run: |
+          set -euo pipefail
+          routes=(index.html resume.html cover-letter.html interview-brief.html 90-day-plan.html backplane-review.html)
+          assets=(brand-tokens.css styles.css styles-components.css app.js)
+          for path in "${routes[@]}" "${assets[@]}"; do
+            test -s "$path" || { echo "Missing or empty: $path"; exit 1; }
+          done
+          for route in "${routes[@]}"; do
+            grep -q 'href="brand-tokens.css"' "$route"
+            grep -q 'href="styles.css"' "$route"
+            grep -q 'href="styles-components.css"' "$route"
+          done
+          grep -q 'src="app.js"' index.html
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install browser renderer
+        run: |
+          npm install --no-save playwright@1.53.0
+          npx playwright install --with-deps chromium
+          python -m pip install --disable-pip-version-check pypdf
+
+      - name: Render PDFs from public HTML and CSS
+        shell: bash
+        run: |
+          mkdir -p docs
+          python -m http.server 8000 >/tmp/quick-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          sleep 2
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          const jobs = [
+            ['resume.html','docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf'],
+            ['cover-letter.html','docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf'],
+            ['interview-brief.html','docs/Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf'],
+            ['90-day-plan.html','docs/Russell-Dudek-Enterprise-AI-First-90-Days.pdf'],
+            ['backplane-review.html','docs/Russell-Dudek-Enterprise-AI-Backplane-Review.pdf']
+          ];
+          (async()=>{
+            const browser = await chromium.launch({headless:true});
+            for (const [route,out] of jobs) {
+              const page = await browser.newPage({viewport:{width:1280,height:900}});
+              await page.goto(`http://127.0.0.1:8000/${route}`,{waitUntil:'networkidle'});
+              await page.emulateMedia({media:'print'});
+              await page.pdf({path:out,format:'Letter',printBackground:true,preferCSSPageSize:true,margin:{top:'0',right:'0',bottom:'0',left:'0'}});
+              await page.close();
+            }
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+      - name: Validate documents and interaction source
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          from pypdf import PdfReader
+          expected={
+            'Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf':2,
+            'Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf':1,
+            'Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf':3,
+            'Russell-Dudek-Enterprise-AI-First-90-Days.pdf':3,
+            'Russell-Dudek-Enterprise-AI-Backplane-Review.pdf':1,
+          }
+          for name,count in expected.items():
+            path=Path('docs')/name
+            assert path.stat().st_size>1000, f'empty PDF {name}'
+            reader=PdfReader(str(path))
+            assert len(reader.pages)==count, f'{name}: {len(reader.pages)} pages, expected {count}'
+            text='\n'.join((p.extract_text() or '') for p in reader.pages)
+            assert 'Russell Dudek' in text
+            assert '412.287.8640' in text
+            assert 'russelldudek@gmail.com' in text
+          resume='\n'.join((p.extract_text() or '') for p in PdfReader('docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf').pages)
+          assert resume.index('Google AI Essentials') < resume.index('IBM Enterprise Design Thinking Practitioner')
+          assert 'foundation-model' in resume and 'PyTorch/JAX' in resume
+          source=Path('app.js').read_text()
+          for token in ['ArrowRight','ArrowLeft','aria-selected','data-reset','data-harden']:
+            assert token in source
+          PY
+
+      - name: Commit generated PDFs
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if ! git diff --cached --quiet; then
+            git commit -m "Generate validated campaign PDFs"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

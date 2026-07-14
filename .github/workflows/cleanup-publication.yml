@@ -1,0 +1,32 @@
+name: Remove obsolete publication scaffolding
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove staging and one-time workflow
+        shell: bash
+        run: |
+          rm -f campaign-source.tgz.b64
+          rm -f bootstrap/chunk-00.txt bootstrap/retry-trigger.txt
+          rmdir bootstrap 2>/dev/null || true
+          rm -f publication-diagnostic.txt test-tree-placeholder.txt test-tree-placeholder-2.txt
+          rm -f .github/workflows/materialize-campaign.yml
+          rm -f .github/workflows/cleanup-publication.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Remove obsolete publication scaffolding"
+            git push
+          fi

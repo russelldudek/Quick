@@ -1,0 +1,170 @@
+name: Document download completion gate
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'qa/document-download-audit.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+environment:
+  name: github-pages
+  url: ${{ steps.deployment.outputs.page_url }}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install renderer and verifier
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install weasyprint pypdf
+
+      - name: Render public documents
+        run: |
+          set -euo pipefail
+          mkdir -p docs qa
+          weasyprint resume.html docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf
+          weasyprint cover-letter.html docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf
+          weasyprint interview-brief.html docs/Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf
+          weasyprint 90-day-plan.html docs/Russell-Dudek-Enterprise-AI-First-90-Days.pdf
+          weasyprint backplane-review.html docs/Russell-Dudek-Enterprise-AI-Backplane-Review.pdf
+
+      - name: Verify source PDFs
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from pypdf import PdfReader
+
+          expected = {
+              'Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf': 2,
+              'Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf': 1,
+              'Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf': 3,
+              'Russell-Dudek-Enterprise-AI-First-90-Days.pdf': 3,
+              'Russell-Dudek-Enterprise-AI-Backplane-Review.pdf': 1,
+          }
+          report = {'source': {}, 'live': {}, 'status': 'source-passed-live-pending'}
+          for name, expected_pages in expected.items():
+              path = Path('docs') / name
+              raw = path.read_bytes()
+              reader = PdfReader(str(path))
+              actual_pages = len(reader.pages)
+              text = '\n'.join((page.extract_text() or '') for page in reader.pages)
+              assert raw[:5] == b'%PDF-'
+              assert len(raw) > 10_000
+              assert actual_pages == expected_pages, (name, actual_pages, expected_pages)
+              assert 'Russell Dudek' in text
+              assert 'Enterprise AI' in text
+              report['source'][name] = {
+                  'bytes': len(raw),
+                  'pages': actual_pages,
+                  'sha256': hashlib.sha256(raw).hexdigest(),
+                  'pdf_signature': True,
+              }
+          Path('qa/document-download-audit.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+
+      - name: Commit source PDFs before deployment
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/*.pdf qa/document-download-audit.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish and verify candidate document downloads [skip ci]'
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - name: Upload complete site including documents
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Live-verify all document downloads
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          BASE="${PAGE_URL%/}"
+          mkdir -p /tmp/live-docs
+          declare -a files=(
+            'Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf'
+            'Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf'
+            'Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf'
+            'Russell-Dudek-Enterprise-AI-First-90-Days.pdf'
+            'Russell-Dudek-Enterprise-AI-Backplane-Review.pdf'
+          )
+          for file in "${files[@]}"; do
+            url="$BASE/docs/$file"
+            code=$(curl --retry 12 --retry-delay 5 --retry-all-errors -L -sS -o "/tmp/live-docs/$file" -w '%{http_code}' "$url")
+            test "$code" = '200' || { echo "HTTP $code: $url"; exit 1; }
+            test "$(head -c 5 "/tmp/live-docs/$file")" = '%PDF-' || { echo "Not a PDF: $url"; exit 1; }
+            echo "PASS $url"
+          done
+
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from pypdf import PdfReader
+
+          expected = {
+              'Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf': 2,
+              'Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf': 1,
+              'Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf': 3,
+              'Russell-Dudek-Enterprise-AI-First-90-Days.pdf': 3,
+              'Russell-Dudek-Enterprise-AI-Backplane-Review.pdf': 1,
+          }
+          report_path = Path('qa/document-download-audit.json')
+          report = json.loads(report_path.read_text())
+          base = os.environ['PAGE_URL'].rstrip('/')
+          for name, expected_pages in expected.items():
+              path = Path('/tmp/live-docs') / name
+              raw = path.read_bytes()
+              pages = len(PdfReader(str(path)).pages)
+              assert pages == expected_pages
+              report['live'][name] = {
+                  'url': f'{base}/docs/{name}',
+                  'http_status': 200,
+                  'bytes': len(raw),
+                  'pages': pages,
+                  'sha256': hashlib.sha256(raw).hexdigest(),
+                  'pdf_signature': True,
+              }
+          report['status'] = 'passed'
+          report['all_live_downloads_verified'] = True
+          report_path.write_text(json.dumps(report, indent=2) + '\n')
+          PY
+
+      - name: Commit live verification receipt
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main
+          git add qa/document-download-audit.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record live candidate document verification [skip ci]'
+            git push origin HEAD:main
+          fi

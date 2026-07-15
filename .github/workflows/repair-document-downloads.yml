@@ -1,0 +1,128 @@
+name: Repair document downloads
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'qa/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+environment:
+  name: github-pages
+  url: ${{ steps.deployment.outputs.page_url }}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-verify-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout audited main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install PDF renderer and verifier
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install weasyprint pypdf
+
+      - name: Generate PDFs from the public HTML and linked CSS
+        run: |
+          set -euo pipefail
+          mkdir -p docs
+          weasyprint resume.html docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf
+          weasyprint cover-letter.html docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf
+          weasyprint interview-brief.html docs/Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf
+          weasyprint 90-day-plan.html docs/Russell-Dudek-Enterprise-AI-First-90-Days.pdf
+          weasyprint backplane-review.html docs/Russell-Dudek-Enterprise-AI-Backplane-Review.pdf
+
+      - name: Verify PDF signatures, page contracts, and substantive text
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from pypdf import PdfReader
+
+          expected = {
+              'Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf': 2,
+              'Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf': 1,
+              'Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf': 3,
+              'Russell-Dudek-Enterprise-AI-First-90-Days.pdf': 3,
+              'Russell-Dudek-Enterprise-AI-Backplane-Review.pdf': 1,
+          }
+          for filename, pages in expected.items():
+              path = Path('docs') / filename
+              data = path.read_bytes()
+              assert data.startswith(b'%PDF-'), f'{filename}: missing PDF signature'
+              assert len(data) > 10_000, f'{filename}: suspiciously small ({len(data)} bytes)'
+              reader = PdfReader(str(path))
+              assert len(reader.pages) == pages, f'{filename}: expected {pages} pages, got {len(reader.pages)}'
+              text = '\n'.join((p.extract_text() or '') for p in reader.pages)
+              assert 'Russell Dudek' in text, f'{filename}: candidate identity missing'
+              assert 'Enterprise AI' in text, f'{filename}: role identity missing'
+              print(f'PASS {filename}: {pages} pages, {len(data)} bytes')
+          PY
+
+      - name: Commit verified PDFs to main
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/*.pdf
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish verified candidate documents [skip ci]'
+            git push origin HEAD:main
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload complete Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Verify deployed routes and PDF responses
+        env:
+          BASE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          BASE="${BASE_URL%/}"
+          for route in \
+            index.html \
+            resume.html \
+            cover-letter.html \
+            interview-brief.html \
+            90-day-plan.html \
+            backplane-review.html \
+            styles.css \
+            styles-components.css \
+            brand-tokens.css \
+            app.js \
+            docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf \
+            docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf \
+            docs/Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf \
+            docs/Russell-Dudek-Enterprise-AI-First-90-Days.pdf \
+            docs/Russell-Dudek-Enterprise-AI-Backplane-Review.pdf
+          do
+            url="$BASE/$route"
+            code=$(curl --retry 8 --retry-delay 5 --retry-all-errors -L -sS -o /tmp/asset -w '%{http_code}' "$url")
+            test "$code" = '200' || { echo "FAIL $code $url"; exit 1; }
+            if [[ "$route" == *.pdf ]]; then
+              head -c 5 /tmp/asset | grep -q '%PDF-' || { echo "FAIL non-PDF $url"; exit 1; }
+            fi
+            echo "PASS 200 $url"
+          done

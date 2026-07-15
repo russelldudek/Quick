@@ -1,0 +1,47 @@
+{
+  "status": "passed",
+  "base_url": "https://russelldudek.github.io/Quick",
+  "all_live_downloads_verified": true,
+  "documents": {
+    "Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf": {
+      "url": "https://russelldudek.github.io/Quick/docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Resume.pdf",
+      "http_status": 200,
+      "content_signature": "%PDF-",
+      "bytes": 35065,
+      "pages": 2,
+      "sha256": "7a34ec9820940e91ece3157561fcda5bfbcb6a0544d7a353f930337d004c4805"
+    },
+    "Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf": {
+      "url": "https://russelldudek.github.io/Quick/docs/Russell-Dudek-Quik-Hire-Enterprise-AI-Cover-Letter.pdf",
+      "http_status": 200,
+      "content_signature": "%PDF-",
+      "bytes": 18688,
+      "pages": 1,
+      "sha256": "b77fa207c2c3e9597bb00ea4ef807e0176e1ae9cbe11893d042b87ba3511fa77"
+    },
+    "Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf": {
+      "url": "https://russelldudek.github.io/Quick/docs/Russell-Dudek-Enterprise-AI-Interview-Thesis-Brief.pdf",
+      "http_status": 200,
+      "content_signature": "%PDF-",
+      "bytes": 31213,
+      "pages": 3,
+      "sha256": "5dadd2cacb8652874ec7bf7229325b5874c4d0feffbd1bd09709e05cd9ce109f"
+    },
+    "Russell-Dudek-Enterprise-AI-First-90-Days.pdf": {
+      "url": "https://russelldudek.github.io/Quick/docs/Russell-Dudek-Enterprise-AI-First-90-Days.pdf",
+      "http_status": 200,
+      "content_signature": "%PDF-",
+      "bytes": 32887,
+      "pages": 3,
+      "sha256": "1b05740e53ffdae2f856e0e6afbad588d6d9123cbc825ddf7225c7d64d89b61f"
+    },
+    "Russell-Dudek-Enterprise-AI-Backplane-Review.pdf": {
+      "url": "https://russelldudek.github.io/Quick/docs/Russell-Dudek-Enterprise-AI-Backplane-Review.pdf",
+      "http_status": 200,
+      "content_signature": "%PDF-",
+      "bytes": 18881,
+      "pages": 1,
+      "sha256": "c1e04860ff62bc35efe9769385e8bb96153368bdc9612015a2df33b54c482f87"
+    }
+  }
+}
